@@ -1,0 +1,556 @@
+---
+title: "heatmat R"
+author: "Daniel"
+date: "24/11/2022"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+```{r}
+
+
+#library(DESeq2) 
+library(ggplot2)
+library(dplyr)
+```
+
+```{r}
+#transcriptos<-read.csv(file.choose(),header = TRUE, na.strings = "NA",",") # archivo 1.csv
+```
+
+```{r}
+#nombredegenes<-read.csv(file.choose(),header = TRUE, na.strings = "NA",",")
+```
+
+
+
+```{r}
+#df4<-left_join(nombredegenes,transcriptos, by ='Transcripts')
+#df4
+
+
+
+```
+```{r}
+#df5 <- df4 %>% select(-c(Transcripts))
+#df5
+```
+
+
+
+
+```{r}
+#write.csv(df5,file ="Counts.csv" )
+```
+
+
+
+```{r}
+Counts<-read.delim("1.csv",header = TRUE,row.names = 1,sep=",")
+Counts
+```
+
+```{r}
+#elimino las filas que sumen 0
+Counts<-Counts[which(rowSums(Counts)>0),]
+Counts
+```
+
+```{r}
+#C control y S con tratamiento
+condition<-factor(c("C","C","C","S","S","S"))
+```
+
+```{r}
+coldata<-data.frame(row.names = colnames(Counts),condition)
+coldata
+```
+
+```{r}
+library("DESeq2")
+```
+
+
+```{r}
+dds<-DESeqDataSetFromMatrix(countData = Counts,colData = coldata, design= ~condition)
+dds
+```
+
+```{r}
+# por si te surgen dudas
+?DESeqDataSetFromMatrix
+```
+
+```{r}
+dds<-DESeq(dds)
+```
+
+```{r}
+vsdata<-vst(dds,blind = FALSE)
+```
+
+```{r}
+plotPCA(vsdata,intgroup="condition")
+```
+
+```{r}
+# dispersión de los datos , se ve poca varaición, esta OK
+plotDispEsts(dds)
+```
+
+```{r}
+# diferncia de expresion
+# base means of that whole row, og2FoldChang negative means that  C samples of this genes was  down regulated, postive  it means that these genes in the C samples was up regulated
+#padj   is more importan than p value because padjust was caorrected for multiple testing , but you shlould use pvalue
+res<-results(dds,contrast = c("condition","S","C"))
+res
+```
+
+```{r}
+# veomos si hay algun na
+sigs<-na.omit(res)
+sigs
+```
+
+```{r}
+# filler genes  by p-value  that are greater than 0.05 , ONLY  223 pastED
+sigs<-sigs[sigs$ padj<0.05,]
+sigs
+```
+
+
+```{r}
+df.top1<-sigs[(abs(sigs$log2FoldChange)<1),]
+df.top1
+#df.top<-sigs[(abs(sigs$log2FoldChange)>1),]
+# quedan 119 genes
+```
+
+
+
+```{r}
+df.top<-sigs[(abs(sigs$log2FoldChange)>1),]
+df.top
+# quedan 119 genes
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+df.top<-sigs[(abs(sigs$log2FoldChange)>1),]
+df.top
+# quedan 119 genes
+```
+
+```{r}
+rlog_out<-rlog(dds,blind = FALSE)# normalizamos los datos de los count de dds
+mat<-assay(rlog_out)[rownames(df.top),  rownames(coldata)] #sig genes x muestras
+base_mean<-rownames(mat)
+mat.scaled<-t(apply(mat,1,scale))# centramos y escalamos cada columna (Z-score) luego transpose
+colnames(mat.scaled)<-colnames(mat)
+```
+
+```{r}
+assay(rlog_out)
+```
+
+```{r}
+mat.scaled
+```
+
+```{r}
+# toma los 50 más alto y los 50 más bajos  de mat
+num_keep<-25
+ 
+rows_keep<-c(seq(1:num_keep),seq((nrow(mat.scaled)-num_keep),nrow(mat.scaled)))
+rows_keep
+```
+
+```{r}
+# obtenemos el valor log2 para cada gen que estan
+
+
+l2_val<-as.matrix(df.top[rows_keep,]$log2FoldChange) 
+colnames(l2_val)<-"logFC"
+
+mean<-as.matrix(df.top[rows_keep,]$baseMean )
+
+colnames(mean)<-"AvExp"
+```
+
+```{r}
+#if (!requireNamespace("biocManager",quietly = TRUE))
+#  install.packages("BiocManager")
+#BiocManager::install("ComplexHeatmap")
+
+```
+
+```{r}
+library(ComplexHeatmap)
+library(RColorBrewer)
+library(circlize)
+
+#install.packages("graphics")
+#install.packages("circlize")
+
+```
+
+```{r}
+
+#install.packages("colorRamp2")
+#valores  min  max l2 
+col_logFC <-colorRamp2(c(min(l2_val),0,max(l2_val)),c("blue","white","red"))
+
+# maps entre los quantiles 
+col_AveExpr<-colorRamp2(c(quantile(mean)[1], quantile (mean)[4]), c("white","red")  )
+
+
+library(graphics)
+library(circlize)
+```
+
+```{r}
+
+ha<-HeatmapAnnotation(summary=anno_summary(gp=gpar(fill=2),height = unit(2,"cm")))
+
+h1<-Heatmap(mat.scaled[rows_keep,],cluster_rows=F,
+            column_labels=colnames(mat.scaled),name="Z-score",
+            cluster_columns=T
+            )
+#row_labels=mat.scaled[rownames(mat.scaled,)]$symbol
+h1
+```
+
+```{r}
+h2<-Heatmap(l2_val,row_labels=df.top$symbol[rows_keep],
+            cluster_rows=F, name="logFC",top_annotation= ha, col=col_logFC,
+            cell_fun=function(j,i,x,y,w,h,col){
+              grid.text(round(l2_val[i,j],2),x,y)
+            })
+h2
+```
+
+```{r}
+h3<-Heatmap(mean,row_labels=df.top$symbol[rows_keep],
+            cluster_rows=F, name="AveExpr",col=col_AveExpr,
+            cell_fun=function(j,i,x,y,w,h,col){
+              grid.text(round(mean[i,j],2),x,y)
+            })
+h3
+
+
+
+```
+
+```{r}
+
+
+
+
+
+h<-h1+h2+h3
+h
+
+```
+
+
+
+```{r}
+ha<-HeatmapAnnotation(summary=anno_summary(gp=gpar(fill=2),height = unit(2,"cm")))
+
+h1<-Heatmap(mat.scaled[rows_keep,],cluster_rows=F,
+            column_labels=colnames(mat.scaled),name="Z-score",
+            cluster_columns=T
+            )
+
+h2<-Heatmap(l2_val,row_labels=df.top$symbol[rows_keep],
+            cluster_rows=F, name="logFC",top_annotation= ha, col=col_logFC,
+            cell_fun=function(j,i,x,y,w,h,col){
+              grid.text(round(l2_val[i,j],2),x,y)
+            })
+
+h3<-Heatmap(mean,row_labels=df.top$symbol[rows_keep],
+            cluster_rows=F, name="AveExpr",col=col_AveExpr,
+            cell_fun=function(j,i,x,y,w,h,col){
+              grid.text(round(mean[i,j],2),x,y)
+            })
+
+
+h<-h1+h2+h3
+h
+
+```
+
+
+
+
+
+
+
+```{r}
+#|write.csv(sigs,file = "deseq_results.csv")
+```
+
+
+```{r}
+#df.top<-df[(abs(df$log2FoldChange)>1),]
+#df.top
+# quedan 119 genes
+```
+
+
+```{r}
+# obtenemos el valor log2 para cada gen que estan
+#library(DESeq2)
+#library(ggplot2)
+#l2_val<-as.matrix(df.top[rows_keep,]$log2FoldChange) 
+#colname(l2_val)<-"logFC"
+
+
+```
+
+
+
+
+
+```{r}
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+BiocManager::install("org.At.tair.db")
+```
+
+
+
+
+```{r}
+if(!requireNamespace("BioManager",quietly = TRUE))
+  install.packages("Biomanager")
+
+BiocManager::install("clusterProfiler")
+
+
+
+
+if(!requireNamespace("BioManager",quietly = TRUE))
+  install.packages("Biomanager")
+
+BiocManager::install("AnnotationDbi")
+```
+
+
+```{r}
+library(clusterProfiler)
+library(org.At.tair.db)
+library(AnnotationDbi)
+```
+
+
+```{r}
+#sigs<-read.delim("genes_.csv",header = TRUE,row.names = 1,sep="")
+
+#sigs<-file.choose(read.csv())
+#sigs
+sigs<-read.csv(file.choose(),header =FALSE, na.strings = "NA",",")
+sigs
+#Counts<-read.delim("1.csv",header = TRUE,row.names = 1,sep=",")
+#Counts
+```
+
+```{r}
+Go_results<-enrichGO(gene=ge)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+#library("org.St.eg.db")
+```
+
+
+```{r}
+#if(!requireNamespace("BioManager",quietly = TRUE))
+#  install.packages("Biomanager")
+
+#BiocManager::install("biomaRt")
+
+```
+
+
+
+
+```{r}
+#library(AnnotationHub)
+#library(BiocManager)
+#library(BiocGenerics)
+#library(biomaRt)
+
+```
+
+```{r}
+#hub <- AnnotationHub()
+#query(hub, c("orgdb","Solanum"))
+```
+```{r}
+#orgdb <- hub[["AH107800"]]
+```
+
+```{r}
+#orgdb
+```
+
+
+```{r}
+zzz<-keys(orgdb, "GENENAME",)
+zzz
+
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+```{r}
+
+# mart <- useMart("plants_mart", "stuberosum_eg_gene","https://plants.ensembl.org")
+
+## Just get everything
+
+#z <- getBM(c("ensembl_gene_id","entrezgene_id","SYMBOL"), mart = mart)
+
+```
+
+```{r}
+#mart
+```
+
+
+```{r}
+#z
+```
+
+
+
+
+```{r}
+#sigs.df<-mapIds(zzz, key=rownames(sigs.df),keytype="ENSEMBL",column="GENENAME")
+```
+
+```{r}
+#library(biomaRt)
+#listEnsembl()
+```
+```{r}
+#ensembl <- useEnsembl(biomart = "genes")
+#datasets <- listDatasets(ensembl)
+#datasets
+#View(datasets)
+```
+
+```{r}
+#searchDatasets(mart = ensembl, pattern = "Stuberosum")
+```
+
+Counts<-read.delim("1.csv",header = TRUE,row.names = 1,sep=",")
+Counts
+
